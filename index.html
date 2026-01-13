@@ -4,20 +4,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GameDaily | 游戏打卡助手</title>
+    <title>GameDaily | 游戏打卡助手 (便携稳定版)</title>
+    
+    <!-- 1. 基础样式 (Tailwind CDN 支持本地运行) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;700&family=Noto+Sans+SC:wght@400;700;900&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg-color: #FDFDFF; /* 纯净奶油白 */
+    
+    <!-- 2. 核心库 (UMD 版本，不依赖 ESM 模块系统，解决 file:// 协议报错) -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    
+    <!-- 3. Babel Standalone (实时编译 TSX/JSX) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- 4. 环境模拟 -->
+    <script>
+      // 模拟 process 变量，防止第三方库报错
+      window.process = { env: { API_KEY: "" } };
+      
+      // 异步加载 AI SDK 的方法（仅在需要时调用）
+      window.getAiClient = async () => {
+        try {
+          // 注意：在 file:// 协议下，部分浏览器可能仍禁止动态 import
+          // 如果双击打开后 AI 功能不可用，建议使用极简本地服务器运行
+          const { GoogleGenAI } = await import("https://esm.sh/@google/genai@1.35.0");
+          return GoogleGenAI;
+        } catch (e) {
+          console.error("AI SDK 加载失败，请在 Web 服务器环境下运行以使用 AI 功能。");
+          return null;
         }
+      };
+    </script>
+
+    <style>
+        :root { --bg-color: #FDFDFF; }
         body {
             font-family: 'Quicksand', 'Noto Sans SC', sans-serif;
             background-color: var(--bg-color);
             color: #1E293B;
             overflow-x: hidden;
+            font-size: 14px;
         }
-        /* 动态背景光效 - 明亮版马卡龙 */
         .glow-sphere {
             position: fixed;
             width: 70vw;
@@ -25,35 +52,26 @@
             border-radius: 50%;
             filter: blur(140px);
             z-index: -1;
-            opacity: 0.25; /* 浅色背景下稍微增加透明度以显色 */
+            opacity: 0.25;
             animation: float 30s infinite alternate;
         }
         @keyframes float {
             0% { transform: translate(-20%, -15%) scale(1); }
             100% { transform: translate(20%, 20%) scale(1.2); }
         }
-        
+        .macaron-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+        }
         ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb {
-            background: rgba(0,0,0,0.05);
-            border-radius: 10px;
-        }
-
-        .glass-card {
-            background: rgba(255, 255, 255, 0.7);
-            backdrop-filter: blur(30px);
-            border: 1px solid rgba(0, 0, 0, 0.03);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.04);
-        }
+        ::-webkit-scrollbar-thumb { background: #E2E8F0; border-radius: 10px; }
     </style>
 <script type="importmap">
 {
   "imports": {
-    "react/": "https://esm.sh/react@^19.2.3/",
     "react": "https://esm.sh/react@^19.2.3",
-    "@google/genai": "https://esm.sh/@google/genai@^1.35.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.35.0"
   }
 }
 </script>
@@ -61,7 +79,261 @@
 <body>
     <div class="glow-sphere bg-[#FFB7B2] top-[-30%] left-[-15%]"></div>
     <div class="glow-sphere bg-[#D4C1EC] bottom-[-30%] right-[-15%]"></div>
-    <div class="glow-sphere bg-[#FFF9AA] top-[20%] right-[-10%] opacity-10"></div>
+    
     <div id="root"></div>
+
+    <!-- 5. 核心逻辑 (使用 text/babel 确保 React 语法被正确解析) -->
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // --- 常量 ---
+        const STORAGE_KEY = 'game_checkin_portable_final_v1';
+        const API_BASE = 'https://jsonblob.com/api/jsonBlob';
+        const GAME_COLORS = [
+          'from-[#FFB7B2] to-[#FF9AA2]', 
+          'from-[#D4C1EC] to-[#B28DFF]', 
+          'from-[#FFF9AA] to-[#FDFD96]', 
+          'from-[#B2E2F2] to-[#89CFF0]'
+        ];
+
+        // --- 同步服务 ---
+        const syncService = {
+          upload: async (data) => {
+            try {
+              const res = await fetch(API_BASE, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+              });
+              const location = res.headers.get('Location');
+              return location ? location.split('/').pop() : null;
+            } catch (e) { return null; }
+          },
+          download: async (id) => {
+            try {
+              const res = await fetch(`${API_BASE}/${id}`);
+              return res.ok ? await res.json() : null;
+            } catch (e) { return null; }
+          }
+        };
+
+        // --- 组件 ---
+        const Header = () => (
+          <header className="pt-8 pb-4 px-6 max-w-6xl mx-auto flex items-center justify-between relative z-50">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center border border-slate-100 shadow-sm">
+                <svg className="w-7 h-7 text-[#FFB7B2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              <div>
+                <h1 className="text-2xl font-black text-slate-800 italic uppercase tracking-tighter">
+                  Game<span className="text-[#FFB7B2]">Daily</span>
+                </h1>
+                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Portable Hub</p>
+              </div>
+            </div>
+            <div className="text-[10px] font-black text-[#D4C1EC] bg-white/80 px-4 py-2 rounded-xl border border-slate-100 uppercase tracking-widest shadow-sm">
+              {new Date().toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', weekday: 'short' })}
+            </div>
+          </header>
+        );
+
+        // --- 主应用 ---
+        const App = () => {
+          const [data, setData] = useState(() => {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            return saved ? JSON.parse(saved) : { games: [], lastUpdate: Date.now() };
+          });
+          const [activeTab, setActiveTab] = useState('');
+          const [isEditMode, setIsEditMode] = useState(false);
+          const [showSyncModal, setShowSyncModal] = useState(false);
+          const [syncId, setSyncId] = useState('');
+          const [generatedSyncCode, setGeneratedSyncCode] = useState('');
+          const [isSyncing, setIsSyncing] = useState(false);
+
+          // 初始化选择第一个游戏
+          useEffect(() => {
+            if (data.games.length > 0 && !activeTab) {
+              setActiveTab(data.games[0].id);
+            }
+          }, [data]);
+
+          // 本地持久化
+          useEffect(() => { 
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); 
+          }, [data]);
+
+          const toggleTask = (accId, taskId) => {
+            if (isEditMode) return;
+            setData(prev => ({
+              ...prev,
+              games: prev.games.map(g => g.id === activeTab ? {
+                ...g, accounts: g.accounts.map(a => a.id === accId ? {
+                  ...a, tasks: a.tasks.map(t => t.id === taskId ? { ...t, isDone: !t.isDone } : t)
+                } : a)
+              } : g)
+            }));
+          };
+
+          const handleUpload = async () => {
+            setIsSyncing(true);
+            const code = await syncService.upload(data);
+            if (code) setGeneratedSyncCode(code);
+            else alert('同步服务连接失败');
+            setIsSyncing(false);
+          };
+
+          const handleDownload = async () => {
+            if (!syncId.trim()) return;
+            setIsSyncing(true);
+            const cloudData = await syncService.download(syncId.trim());
+            if (cloudData) { 
+              setData(cloudData); 
+              setShowSyncModal(false); 
+              alert('数据已恢复！'); 
+            } else {
+              alert('同步码错误或已过期');
+            }
+            setIsSyncing(false);
+          };
+
+          const currentGame = data.games.find(g => g.id === activeTab);
+
+          return (
+            <div className="min-h-screen flex flex-col pb-24">
+              <Header />
+              <main className="flex-grow max-w-5xl w-full mx-auto p-4 md:p-6">
+                
+                {/* 顶部标签栏 */}
+                <div className="flex flex-wrap items-center gap-3 mb-8">
+                  <div className="flex bg-white/70 p-1.5 rounded-2xl border border-slate-100 shadow-sm backdrop-blur-md overflow-x-auto max-w-full">
+                    {data.games.map(g => (
+                      <button key={g.id} onClick={() => setActiveTab(g.id)} className={`whitespace-nowrap px-5 py-2 rounded-xl text-xs font-black transition-all duration-300 ${activeTab === g.id ? `bg-gradient-to-r ${g.color} text-slate-900 shadow-md transform -translate-y-0.5` : 'text-slate-400 hover:text-slate-600'}`}>
+                        {g.name}
+                      </button>
+                    ))}
+                    {isEditMode && (
+                      <button onClick={() => {
+                        const newG = { id: `g${Date.now()}`, name: '新游戏', color: GAME_COLORS[data.games.length % 4], accounts: [], events: [] };
+                        setData(p => ({ ...p, games: [...p.games, newG] }));
+                        setActiveTab(newG.id);
+                      }} className="px-4 text-[#FFB7B2] font-black hover:scale-125 transition-transform">+</button>
+                    )}
+                  </div>
+                  <div className="flex-grow" />
+                  <div className="flex gap-2">
+                    <button onClick={() => setShowSyncModal(true)} className="w-10 h-10 flex items-center justify-center bg-white/70 rounded-xl border border-slate-100 text-[#D4C1EC] hover:text-[#B28DFF] shadow-sm transition-all"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" /></svg></button>
+                    <button onClick={() => setIsEditMode(!isEditMode)} className={`px-5 py-2 rounded-xl text-[10px] font-black border uppercase tracking-widest transition-all ${isEditMode ? 'bg-rose-100 border-rose-200 text-rose-900 shadow-inner' : 'bg-white/70 border-slate-100 text-slate-400 shadow-sm'}`}>{isEditMode ? '完成修改' : '管理数据'}</button>
+                  </div>
+                </div>
+
+                {currentGame ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {currentGame.accounts.map(acc => (
+                      <div key={acc.id} className="bg-white/80 border border-slate-100 rounded-3xl p-6 shadow-sm relative overflow-hidden group animate-in slide-in-from-bottom-2 duration-500">
+                        <div className="flex justify-between items-center mb-5">
+                          {isEditMode ? (
+                            <input className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1 text-sm font-black w-2/3 outline-none focus:ring-2 ring-[#FFB7B2]/20" value={acc.name} onChange={e => {
+                               setData(p => ({...p, games: p.games.map(g => g.id === activeTab ? {...g, accounts: g.accounts.map(a => a.id === acc.id ? {...a, name: e.target.value} : a)} : g)}));
+                            }} />
+                          ) : <h3 className="text-base font-black text-slate-800 tracking-tight">{acc.name}</h3>}
+                          {isEditMode && <button onClick={() => setData(p => ({...p, games: p.games.map(g => g.id === activeTab ? {...g, accounts: g.accounts.filter(a => a.id !== acc.id)} : g)}))} className="text-rose-300 text-[9px] font-black uppercase hover:text-rose-500 transition-colors">删除</button>}
+                        </div>
+                        <div className="space-y-3">
+                          {acc.tasks.map(t => (
+                            <div key={t.id} onClick={() => toggleTask(acc.id, t.id)} className={`p-3.5 rounded-2xl border transition-all duration-300 ${t.isDone ? 'bg-slate-50 opacity-40 border-transparent scale-95' : 'bg-white border-slate-50 shadow-sm cursor-pointer hover:border-[#D4C1EC]/30'}`}>
+                              <div className="flex items-center gap-4">
+                                <div className={`w-6 h-6 rounded-lg transition-all flex items-center justify-center ${t.isDone ? 'bg-[#D4C1EC]' : 'bg-slate-50 border border-slate-200 shadow-inner'}`}>
+                                  {t.isDone && <svg className="w-4 h-4 text-purple-900" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg>}
+                                </div>
+                                {isEditMode ? (
+                                   <input className="bg-transparent text-xs font-bold w-full outline-none" value={t.label} onChange={e => {
+                                      setData(p => ({...p, games: p.games.map(g => g.id === activeTab ? {...g, accounts: g.accounts.map(a => a.id === acc.id ? {...a, tasks: a.tasks.map(tk => tk.id === t.id ? {...tk, label: e.target.value} : tk)} : a)} : g)}));
+                                   }} />
+                                ) : <span className={`text-xs font-bold ${t.isDone ? 'line-through text-slate-300' : 'text-slate-700'}`}>{t.label}</span>}
+                                {isEditMode && <button onClick={(e) => { e.stopPropagation(); setData(p => ({...p, games: p.games.map(g => g.id === activeTab ? {...g, accounts: g.accounts.map(a => a.id === acc.id ? {...a, tasks: a.tasks.filter(tk => tk.id !== t.id)} : a)} : g)}))} className="ml-auto text-rose-200 hover:text-rose-500 font-black">×</button>}
+                              </div>
+                            </div>
+                          ))}
+                          {isEditMode && (
+                            <button onClick={() => setData(p => ({...p, games: p.games.map(g => g.id === activeTab ? {...g, accounts: g.accounts.map(a => a.id === acc.id ? {...a, tasks: [...a.tasks, {id: `t${Date.now()}`, label: '新任务', isDone: false}]} : a)} : g)}))} className="w-full py-3 border border-dashed border-slate-200 rounded-2xl text-[9px] font-black text-slate-300 uppercase tracking-widest hover:border-[#FFB7B2]/50 hover:text-[#FFB7B2] transition-all">+ 新增任务</button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {isEditMode && (
+                      <button onClick={() => setData(p => ({...p, games: p.games.map(g => g.id === activeTab ? {...g, accounts: [...g.accounts, {id: `acc${Date.now()}`, name: '新号位', tasks: []}]} : g)}))} className="py-12 border-2 border-dashed border-slate-100 rounded-3xl text-slate-300 text-[11px] font-black uppercase flex flex-col items-center justify-center gap-3 hover:bg-slate-50 transition-all group-hover:border-slate-200">
+                        <span className="text-2xl">+</span>
+                        <span>添加号位</span>
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-32 animate-pulse">
+                    <p className="text-slate-200 text-xs font-black tracking-[0.5em] uppercase italic">开启你的游戏打卡之旅</p>
+                    <button onClick={() => setIsEditMode(true)} className="mt-4 text-[#FFB7B2] text-[10px] font-bold underline">立即添加游戏</button>
+                  </div>
+                )}
+              </main>
+
+              {/* 进度悬浮条 */}
+              {currentGame && !isEditMode && (
+                <div className="fixed bottom-0 left-0 right-0 p-6 z-50">
+                  <div className="max-w-sm mx-auto bg-white/90 backdrop-blur-2xl rounded-3xl p-4 shadow-2xl border border-slate-100 flex items-center gap-5">
+                    <div className="w-14 h-14 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center text-xs font-black text-slate-800 shadow-inner">
+                      {Math.round((currentGame.accounts.flatMap(a => a.tasks).filter(t => t.isDone).length / (currentGame.accounts.flatMap(a => a.tasks).length || 1)) * 100)}%
+                    </div>
+                    <div className="flex-grow">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 italic">{currentGame.name} 打卡进度</p>
+                      <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden p-0.5 shadow-inner">
+                        <div className={`h-full bg-gradient-to-r ${currentGame.color} rounded-full transition-all duration-1000 ease-out`} style={{ width: `${(currentGame.accounts.flatMap(a => a.tasks).filter(t => t.isDone).length / (currentGame.accounts.flatMap(a => a.tasks).length || 1)) * 100}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 同步弹窗 */}
+              {showSyncModal && (
+                <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6">
+                  <div className="absolute inset-0 bg-slate-900/20 backdrop-blur-md" onClick={() => setShowSyncModal(false)} />
+                  <div className="relative w-full max-w-xs bg-white rounded-[2.5rem] p-8 shadow-2xl border border-slate-50 animate-in zoom-in-95 duration-300">
+                    <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
+                      <span className="w-2 h-6 bg-[#D4C1EC] rounded-full"></span>
+                      云同步中心
+                    </h3>
+                    <div className="space-y-6">
+                      <div className="p-4 bg-slate-50 rounded-3xl border border-slate-100">
+                        <p className="text-[9px] font-black text-slate-400 uppercase mb-3 tracking-widest">备份到云端</p>
+                        {generatedSyncCode ? (
+                          <div className="space-y-3">
+                            <code className="block text-[11px] font-black text-[#D4C1EC] bg-white p-3 rounded-2xl border border-slate-100 break-all shadow-inner">{generatedSyncCode}</code>
+                            <button onClick={() => {navigator.clipboard.writeText(generatedSyncCode); alert('已复制')}} className="w-full text-[9px] font-black text-slate-400 uppercase hover:text-slate-800 transition-colors">点击复制</button>
+                          </div>
+                        ) : (
+                          <button onClick={handleUpload} disabled={isSyncing} className="w-full py-3 bg-gradient-to-r from-[#FFB7B2] to-[#D4C1EC] text-slate-900 text-xs font-black rounded-2xl shadow-sm hover:scale-[1.02] active:scale-95 transition-all">{isSyncing ? '同步中...' : '生成同步码'}</button>
+                        )}
+                      </div>
+                      <div className="p-4 bg-slate-50 rounded-3xl border border-slate-100">
+                        <p className="text-[9px] font-black text-slate-400 uppercase mb-3 tracking-widest">从备份恢复</p>
+                        <div className="flex gap-2">
+                          <input className="flex-grow bg-white border border-slate-100 rounded-2xl px-4 py-2 text-xs font-bold outline-none focus:ring-2 ring-[#D4C1EC]/20" placeholder="同步码" value={syncId} onChange={e => setSyncId(e.target.value)} />
+                          <button onClick={handleDownload} className="px-5 py-2 bg-slate-800 text-white text-xs font-black rounded-2xl hover:bg-slate-700 transition-all shadow-md">恢复</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        };
+
+        // 渲染根节点
+        const container = document.getElementById('root');
+        const root = ReactDOM.createRoot(container);
+        root.render(<App />);
+    </script>
 </body>
 </html>
