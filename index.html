@@ -4,23 +4,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GameDaily | 游戏打卡助手 (便携版)</title>
-    
-    <!-- 基础样式与字体 -->
+    <title>GameDaily | 游戏打卡助手</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;700&family=Noto+Sans+SC:wght@400;700;900&display=swap" rel="stylesheet">
-    
-    <!-- 关键：浏览器端编译工具，让你不需要安装 Node.js 也能运行 TSX -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
     <style>
-        :root { --bg-color: #FDFDFF; }
+        :root {
+            --bg-color: #FDFDFF; /* 纯净奶油白 */
+        }
         body {
             font-family: 'Quicksand', 'Noto Sans SC', sans-serif;
             background-color: var(--bg-color);
             color: #1E293B;
             overflow-x: hidden;
         }
+        /* 动态背景光效 - 明亮版马卡龙 */
         .glow-sphere {
             position: fixed;
             width: 70vw;
@@ -28,41 +25,35 @@
             border-radius: 50%;
             filter: blur(140px);
             z-index: -1;
-            opacity: 0.25;
+            opacity: 0.25; /* 浅色背景下稍微增加透明度以显色 */
             animation: float 30s infinite alternate;
         }
         @keyframes float {
             0% { transform: translate(-20%, -15%) scale(1); }
             100% { transform: translate(20%, 20%) scale(1.2); }
         }
+        
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb {
             background: rgba(0,0,0,0.05);
             border-radius: 10px;
         }
-    </style>
 
-    <!-- 模拟环境变量环境 -->
-    <script>
-      window.process = {
-        env: {
-          // 这里会在部署时自动注入，或者您可以手动在本地环境中配置
-          API_KEY: "" 
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(30px);
+            border: 1px solid rgba(0, 0, 0, 0.03);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.04);
         }
-      };
-    </script>
-
-    <!-- 模块映射：让浏览器知道从哪里下载 React 等库 -->
-    <script type="importmap">
+    </style>
+<script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@19.0.0",
-    "react-dom": "https://esm.sh/react-dom@19.0.0",
-    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
-    "@google/genai": "https://esm.sh/@google/genai@1.35.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/"
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "@google/genai": "https://esm.sh/@google/genai@^1.35.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
   }
 }
 </script>
@@ -71,10 +62,6 @@
     <div class="glow-sphere bg-[#FFB7B2] top-[-30%] left-[-15%]"></div>
     <div class="glow-sphere bg-[#D4C1EC] bottom-[-30%] right-[-15%]"></div>
     <div class="glow-sphere bg-[#FFF9AA] top-[20%] right-[-10%] opacity-10"></div>
-    
     <div id="root"></div>
-
-    <!-- 使用 Babel 实时解析 index.tsx -->
-    <script type="text/babel" data-type="module" src="index.tsx"></script>
 </body>
 </html>
